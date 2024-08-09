@@ -1,3 +1,5 @@
+import threading
+
 import aiohttp
 import psutil
 import json
@@ -11,6 +13,13 @@ from agent.mobsf import MobSF
 
 mobfs = MobSF()
 
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.StreamHandler()
+                    ])
+
+logger = logging.getLogger(__name__)
 
 # Author : HunterBounter
 
@@ -86,26 +95,49 @@ def download_file(url):
     response.raise_for_status()
     return response.content
 
+
 def get_server_stats():
+    logger.info("get_server_stats - Starting to gather server statistics")
+
     try:
+        # Hostname'i alma ve loglama
         hostname = get_host_name()
+        logger.info(f"get_server_stats - Hostname: {hostname}")
 
+        # RAM kullanımını alma ve loglama
         ram_usage = psutil.virtual_memory().percent
+        logger.info(f"get_server_stats - RAM Usage: {ram_usage}%")
+
+        # CPU kullanımını alma ve loglama
         cpu_usage = psutil.cpu_percent()
+        logger.info(f"get_server_stats - CPU Usage: {cpu_usage}%")
+
+        # Aktif ağ arayüzlerini alma ve loglama
         active_interfaces = get_active_interfaces()
+        logger.info(f"get_server_stats - Active Interfaces: {active_interfaces}")
+
+        # Disk kullanımını alma ve loglama
         disk_usage = psutil.disk_usage('/')
+        logger.info(f"get_server_stats - Disk Usage: {disk_usage.percent}%")
 
+        # Toplam tarama sayısını alma ve loglama
         total_scan_count = mobfs.active_scans_count()
+        logger.info(f"get_server_stats - Total scan count: {total_scan_count}")
 
+        # MobSF durumunu kontrol etme ve loglama
         mobfs_status = mobfs.check_mobfs_is_online()
-
         if mobfs_status:
             mobfs_status = "online"
+            logger.info("get_server_stats - MobSF is online")
         else:
             mobfs_status = "offline"
+            logger.warning("get_server_stats - MobSF is offline")
 
+        # Sunucu çalışma süresini alma ve loglama
         uptime = get_uptime()
+        logger.info(f"get_server_stats - Server Uptime: {uptime}")
 
+        # Sunucu istatistiklerini bir araya getirme ve loglama
         stats = {
             "hostname": hostname,
             "telemetry_type": "mobfs",
@@ -118,34 +150,45 @@ def get_server_stats():
             "active_connections": len(psutil.net_connections()),
             "current_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
+        logger.info(f"get_server_stats - Server stats compiled: {stats}")
 
+        # MobSF çevrimiçi ise hedefleri al ve APK'leri işle
         if mobfs_status == "online":
-            logging.info("Getting targets")
+            logger.info("get_server_stats - MobSF is online, attempting to retrieve targets")
             target_response = get_targets(total_scan_count, 4)
 
             if target_response['success']:
-                logging.info("Targets received")
-                logging.info("Response -> " + str(target_response))
+                logger.info(f"get_server_stats - Targets received successfully: {target_response}")
 
                 targets = target_response['data']['targets']
 
                 if targets is not None:
                     for target in targets:
-                        logging.info(f"Downloading APK from {target}")
+                        logger.info(f"get_server_stats - Downloading APK from {target}")
                         try:
                             file_content = download_file(target)
-                            logging.info(f"Uploading APK to MobSF")
+                            logger.info(f"get_server_stats - Uploading APK to MobSF")
                             upload_response = mobfs.upload_apk(file_content, target.split('/')[-1])
-                            logging.info(f"Scanning APK with MobSF")
-                            scan_response = mobfs.scan_apk(upload_response['hash'])
-                            logging.info(f"Scan response: {scan_response}")
+                            logger.info(f"get_server_stats - Scanning APK with MobSF")
+                            #scan_response = mobfs.scan_apk(upload_response['hash'])
+                            scan_thread = threading.Thread(target=scan_apk_in_thread, args=(upload_response['hash'],))
+                            scan_thread.start() # Start the thread
                         except Exception as e:
-                            logging.error(f"Failed to process {target}: {e}")
+                            logger.error(f"get_server_stats - Failed to process {target}: {e}")
         return stats
+
     except Exception as e:
-        print(f"Failed to get server stats: {e}")
+        logger.error(f"get_server_stats - Failed to get server stats: {e}")
         return {"success": False, "message": str(e)}
 
+
+def scan_apk_in_thread(hash_value):
+    try:
+        logger.info(f"Starting APK scan in a separate thread for hash: {hash_value}")
+        scan_response = mobfs.scan_apk(hash_value)
+        logger.info(f"Scan response received: {scan_response}")
+    except Exception as e:
+        logger.error(f"Error occurred during APK scan: {e}")
 
 def get_targets(total_running_scan_count, docker_type):
     url = "https://panel.hunterbounter.com/target"
@@ -188,7 +231,7 @@ def send_scan_telemetry():
     try:
         scan_results = mobfs.get_scans_list()
         print("Scan Results : ", scan_results)
-        logging.info("Scan Results (len): " , scan_results)
+
 
         # scan results is raise ?
         if scan_results is None or scan_results == {}:

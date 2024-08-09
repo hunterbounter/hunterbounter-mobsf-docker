@@ -1,16 +1,3 @@
-'''
-Coded by:
-  _    _             _            ____                    _            
- | |  | |           | |          |  _ \                  | |           
- | |__| |_   _ _ __ | |_ ___ _ __| |_) | ___  _   _ _ __ | |_ ___ _ __ 
- |  __  | | | | '_ \| __/ _ \ '__|  _ < / _ \| | | | '_ \| __/ _ \ '__|
- | |  | | |_| | | | | ||  __/ |  | |_) | (_) | |_| | | | | ||  __/ |   
- |_|  |_|\__,_|_| |_|\__\___|_|  |____/ \___/ \__,_|_| |_|\__\___|_|   
-                                                                       
-web : https://hunterbounter.com git : https://github.com/hunterbounter/                                                         
-
-'''
-
 import json
 import logging
 import os
@@ -28,6 +15,9 @@ from mobsf import MobSF
 
 app = FastAPI()
 
+# MobSFClient yapılandırması
+base_url = "http://172.17.0.2:8000"
+api_key = "3819d79b91dde480b4c66c7702b7cb20b20da2f7fdbcf06bd33433f2b7172de7"
 mobsf_client = MobSF()
 
 logging.basicConfig(level=logging.INFO,
@@ -61,13 +51,11 @@ async def upload_and_analyze_apk(file: UploadFile = File(...)):
 
 def telemetry_thread():
     while True:
-        # check is macos
-        if sys.platform == 'darwin':
-            return
+        logging.info("init telemetry_thread")
         server_stats = get_server_stats()
         json_stats = json.dumps(server_stats, indent=4)
         send_telemetry(json_stats)
-        time.sleep(10)  # 30 Sec interval
+        time.sleep(5)  # 30 Sec interval
 
 
 def send_scan_results():
@@ -75,6 +63,7 @@ def send_scan_results():
         logging.info("init send_scan_results")
         mobfs_online = MobSF().check_mobfs_is_online()
         if mobfs_online:
+            logging.info("Sending Scan Telemetry")
             send_scan_telemetry()
         logging.info("check_is_mobfs_online() False")
         time.sleep(15)  # 15 Sec interval

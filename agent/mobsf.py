@@ -67,10 +67,15 @@ class MobSF:
 
     def upload_apk(self, file_content, file_name):
         logger.info(f"Uploading APK: {file_name}")
+
         url = f"{self.base_url}/api/v1/upload"
         files = {'file': (file_name, file_content, 'application/vnd.android.package-archive')}
+
         response = requests.post(url, files=files, headers=self.headers)
-        logger.info("upload_apk -> ", response.text)
+
+        # Correcting the logger statement
+        logger.info(f"upload_apk -> {response.text}")
+
         response.raise_for_status()
         return response.json()
 
@@ -149,51 +154,113 @@ class MobSF:
         logger.info(f"PDF report saved to {output_pdf_path}.")
 
     def get_scans_list(self):
-        logger.info("Getting scans list")
+        logger.info("get_scans_list - Starting to retrieve scans list")
+
         url = f"{self.base_url}/api/v1/scans"
+
         try:
-            logger.info("Getting active scans count")
-            logger.info("Api Key %s", self.api_key)
-            logger.info("Requesting %s", url)
-            logger.info("Headers: %s", self.headers)
+            # Aktif tarama sayısını loglama
+            logger.info("get_scans_list - Getting active scans count")
+
+            # API anahtarını loglama (Güvenlik açısından bunu üretim ortamında loglamamak daha iyidir)
+            logger.info("get_scans_list - Using API Key: %s", self.api_key)
+
+            # İstekte bulunulan URL'i loglama
+            logger.info("get_scans_list - Requesting URL: %s", url)
+
+            # İstek için kullanılan başlıkları loglama
+            logger.info("get_scans_list - Request Headers: %s", self.headers)
+
+            # GET isteği gönderme
             response = requests.get(url, headers=self.headers)
-            response.raise_for_status()  # HTTP hatalarını tetikle
+
+            # Yanıtın durum kodunu loglama
+            logger.info("get_scans_list - Received response: Status Code = %d", response.status_code)
+
+            # HTTP durum kodu hatalarını tetikle
+            response.raise_for_status()
+
+            # Yanıtı JSON formatında loglama ve döndürme
             data = response.json()
+            logger.info("get_scans_list - Successfully retrieved scans list: %s", data)
             return data
 
+        except requests.exceptions.HTTPError as http_err:
+            # HTTP hatalarını loglama
+            logger.error("get_scans_list - HTTP error occurred: %s", http_err)
+            return 0
+
+        except requests.exceptions.RequestException as req_err:
+            # Diğer istek hatalarını loglama
+            logger.error("get_scans_list - Request failed: %s", req_err)
+            return 0
+
         except Exception as e:
-            print(f"An error occurred 2 2 : {e}")
+            # Beklenmedik hataları loglama
+            logger.error("get_scans_list - An unexpected error occurred: %s", e)
             return 0
 
     def check_mobfs_is_online(self):
-        logger.info("Checking if MobSF is online")
+        logger.info("check_mobfs_is_online - Starting to check if MobSF is online")
+
         try:
-            logger.info("Headers: %s", self.headers)
+            # Headers bilgisini loglama
+            logger.info("check_mobfs_is_online - Request Headers: %s", self.headers)
+
+            # GET isteği yapma
             response = requests.get(self.base_url, headers=self.headers)
-            logger.info("MobSF is online")
-            return response.status_code == 200
-        except Exception as e:
-            logger.error(f"MobSF is offline: {e}")
+
+            # İstek sonrası loglama
+            logger.info("check_mobfs_is_online - Received response: Status Code = %d", response.status_code)
+
+            # Durum kodu kontrolü
+            if response.status_code == 200:
+                logger.info("check_mobfs_is_online - MobSF is online and reachable")
+                return True
+            else:
+                logger.warning("check_mobfs_is_online - MobSF responded with non-200 status code: %d",
+                               response.status_code)
+                return False
+
+        except requests.exceptions.RequestException as req_err:
+            logger.error("check_mobfs_is_online - Request failed: %s", req_err)
             return False
-        pass
+
+        except Exception as e:
+            logger.error("check_mobfs_is_online - An unexpected error occurred: %s", e)
+            return False
 
     def active_scans_count(self):
-        logger.info("Getting active scans count")
-        url = f"{self.base_url}/api/v1/scans"
+        logger.info("active_scans_count - Started counting active scans")
+
         try:
+            # Scan listesini alma
             scans = self.get_scans_list()
-            # Count 0 ise 0 döner
-            contents = scans['content']
-            if len(contents) == 0:
+            logger.info("active_scans_count - Retrieved scans list: %s", scans)
+
+            # Scan içeriğini alma
+            contents = scans.get('content', [])
+            logger.info("active_scans_count - Scan content list: %s", contents)
+
+            if not contents:
+                logger.info("active_scans_count - No scans found, returning 0")
                 return 0
 
             active_scans = 0
-            for scan in contents:
-                if scan.get('APP_NAME', '') == '':
-                    active_scans += 1
 
+            # Her bir scan'ı kontrol etme
+            for index, scan in enumerate(contents):
+                app_name = scan.get('APP_NAME')
+                logger.info("active_scans_count - Processing scan %d: APP_NAME = '%s'", index, app_name)
+
+                if not app_name:
+                    active_scans += 1
+                    logger.info("active_scans_count - Scan %d has an empty APP_NAME, incremented active_scans to %d",
+                                index, active_scans)
+
+            logger.info("active_scans_count - Total active scans with empty APP_NAME: %d", active_scans)
             return active_scans
 
         except Exception as e:
-            logger.error(f"Failed to get active scans count: {e}")
+            logger.error("active_scans_count - Failed to get active scans count: %s", e)
             return 0
